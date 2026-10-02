@@ -1,0 +1,22 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/smart_campus
+      FRONTEND_ORIGIN: http://localhost:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:
