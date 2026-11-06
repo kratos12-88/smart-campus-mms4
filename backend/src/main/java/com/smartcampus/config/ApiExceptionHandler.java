@@ -12,6 +12,18 @@ public class ApiExceptionHandler {
     return Map.of("message",e.getMessage());
   }
 
+  @ExceptionHandler(ForbiddenException.class)
+  @ResponseStatus(HttpStatus.FORBIDDEN)
+  public Map<String,String> forbidden(ForbiddenException e){
+    return Map.of("message",e.getMessage());
+  }
+
+  @ExceptionHandler(NotFoundException.class)
+  @ResponseStatus(HttpStatus.NOT_FOUND)
+  public Map<String,String> notFound(NotFoundException e){
+    return Map.of("message",e.getMessage());
+  }
+
   @ExceptionHandler(ConflictException.class)
   @ResponseStatus(HttpStatus.CONFLICT)
   public Map<String,String> conflict(ConflictException e){
