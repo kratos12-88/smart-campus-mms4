@@ -19,6 +19,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 
 import com.smartcampus.model.Complaint;
+import com.smartcampus.config.ForbiddenException;
 import com.smartcampus.model.Counter;
 import com.smartcampus.model.UserAccount;
 import com.smartcampus.repository.ComplaintRepository;
@@ -124,7 +125,7 @@ class ComplaintServiceTest {
     Complaint c = complaint(11L, "SUBMITTED", "Other University");
     when(repo.findById(11L)).thenReturn(Optional.of(c));
 
-    assertThrows(IllegalArgumentException.class, () -> service.assign(11L, "Team A", staff));
+    assertThrows(ForbiddenException.class, () -> service.assign(11L, "Team A", staff));
   }
 
   @Test
@@ -145,8 +146,8 @@ class ComplaintServiceTest {
 
   @Test
   void studentCannotReadStaffComplaintsOrAnalytics() {
-    assertThrows(IllegalArgumentException.class, () -> service.forStaff(student));
-    assertThrows(IllegalArgumentException.class, () -> service.analytics(student));
+    assertThrows(ForbiddenException.class, () -> service.forStaff(student));
+    assertThrows(ForbiddenException.class, () -> service.analytics(student));
     verifyNoInteractions(repo);
   }
 

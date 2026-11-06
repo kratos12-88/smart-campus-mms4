@@ -16,6 +16,8 @@ public class Complaint {
   private Instant createdAt,updatedAt,dueAt,resolvedAt;
   private Integer rating;
   private String feedback;
+  private String evidenceName,evidenceType,evidenceData;
+  private List<String> comments=new ArrayList<>();
   private List<String> auditTrail=new ArrayList<>();
 
   public String getMongoId(){return mongoId;} public void setMongoId(String v){mongoId=v;}
@@ -41,5 +43,9 @@ public class Complaint {
   public Instant getResolvedAt(){return resolvedAt;} public void setResolvedAt(Instant v){resolvedAt=v;}
   public Integer getRating(){return rating;} public void setRating(Integer v){rating=v;}
   public String getFeedback(){return feedback;} public void setFeedback(String v){feedback=v;}
+  public String getEvidenceName(){return evidenceName;} public void setEvidenceName(String v){evidenceName=v;}
+  public String getEvidenceType(){return evidenceType;} public void setEvidenceType(String v){evidenceType=v;}
+  public String getEvidenceData(){return evidenceData;} public void setEvidenceData(String v){evidenceData=v;}
+  public List<String> getComments(){return comments;} public void setComments(List<String> v){comments=v;}
   public List<String> getAuditTrail(){return auditTrail;} public void setAuditTrail(List<String> v){auditTrail=v;}
 }
