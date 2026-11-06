@@ -23,7 +23,7 @@ public class ComplaintController {
   public Map<String,Object> health(){return Map.of("ok",true,"database","mongodb");}
 
   @GetMapping("/complaints")
-  public List<Object> recent(@RequestHeader(value="Authorization",required=false) String h){return complaints.recentViews(optionalUser(h));}
+  public List<Complaint> recent(@RequestHeader(value="Authorization",required=false) String h){return complaints.forStaff(auth.require(h));}
 
   @GetMapping("/complaints/{id}")
   public Object one(@PathVariable long id,@RequestHeader(value="Authorization",required=false) String h){return complaints.view(complaints.one(id),optionalUser(h));}
