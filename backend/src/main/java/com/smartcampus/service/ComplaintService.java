@@ -36,6 +36,7 @@ public class ComplaintService {
   public List<Complaint> mine(UserAccount u) { return repo.findBySubmittedEmailIgnoreCaseOrderByCreatedAtDesc(u.getEmail()); }
 
   public List<Complaint> forStaff(UserAccount u) {
+    requireStaff(u);
     if("ADMIN".equals(u.getRole()) && (u.getSchoolName()==null || u.getSchoolName().isBlank())) return recent();
     return repo.findBySchoolNameIgnoreCaseOrderByCreatedAtDesc(u.getSchoolName());
   }
@@ -145,9 +146,15 @@ public class ComplaintService {
     return c.getSeq();
   }
 
-  private void checkStaffAccess(Complaint c, UserAccount u) {
-    if(!List.of("STAFF","ADMIN").contains(u.getRole()))
+  private void requireStaff(UserAccount u) {
+    if(u == null || !List.of("STAFF","ADMIN").contains(u.getRole()))
       throw new IllegalArgumentException("Staff access required");
+    if("STAFF".equals(u.getRole()) && (u.getSchoolName()==null || u.getSchoolName().isBlank()))
+      throw new IllegalArgumentException("Staff institution is required");
+  }
+
+  private void checkStaffAccess(Complaint c, UserAccount u) {
+    requireStaff(u);
     if(!"ADMIN".equals(u.getRole()) || (u.getSchoolName()!=null && !u.getSchoolName().isBlank())) {
       if(!Objects.equals(c.getSchoolName(),u.getSchoolName()))
         throw new IllegalArgumentException("Complaint belongs to another institution");
