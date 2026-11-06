@@ -22,16 +22,20 @@ public class ComplaintController {
   public Map<String,Object> health(){return Map.of("ok",true,"database","mongodb");}
 
   @GetMapping("/complaints")
-  public List<Complaint> recent(){return complaints.recent();}
+  public List<Complaint> recent(@RequestHeader("Authorization") String h){
+    return complaints.forStaff(auth.require(h));
+  }
 
   @GetMapping("/complaints/{id}")
-  public Complaint one(@PathVariable long id){return complaints.one(id);}
+  public Map<String,Object> one(@PathVariable long id){return complaints.publicView(id);}
 
   @GetMapping("/complaints/mine")
   public List<Complaint> mine(@RequestHeader("Authorization") String h){return complaints.mine(auth.require(h));}
 
   @PostMapping("/complaints")
-  public Complaint create(@RequestBody Complaint c,@RequestHeader("Authorization") String h){return complaints.create(c,auth.require(h));}
+  public Complaint create(@RequestBody Complaint c,@RequestHeader("Authorization") String h){
+    return complaints.create(c,auth.require(h));
+  }
 
   @GetMapping("/staff/complaints")
   public List<Complaint> staff(@RequestHeader("Authorization") String h){return complaints.forStaff(auth.require(h));}
