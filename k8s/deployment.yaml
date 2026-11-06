@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-campus
+  labels:
+    app: smart-campus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smart-campus
+  template:
+    metadata:
+      labels:
+        app: smart-campus
+    spec:
+      containers:
+        - name: smart-campus
+          image: smart-campus-mms4:ci
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: db-vault
+                  key: mongodb-uri
+            - name: FRONTEND_ORIGIN
+              value: "http://localhost:8080"
+          readinessProbe:
+            httpGet:
+              path: /api/dashboard/summary
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
