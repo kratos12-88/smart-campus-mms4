@@ -51,19 +51,19 @@ public class ComplaintService {
 
   public Map<String,Object> publicView(long id) {
     Complaint c = one(id);
-    return Map.of(
-      "id", c.getId(),
-      "title", safe(c.getTitle()),
-      "description", safe(c.getDescription()),
-      "location", safe(c.getLocation()),
-      "category", safe(c.getCategory()),
-      "priority", safe(c.getPriority()),
-      "status", safe(c.getStatus()),
-      "department", safe(c.getDepartment()),
-      "assignedTo", safe(c.getAssignedTo()),
-      "createdAt", c.getCreatedAt()==null ? "" : c.getCreatedAt().toString(),
-      "updatedAt", c.getUpdatedAt()==null ? "" : c.getUpdatedAt().toString()
-    );
+    Map<String,Object> view = new LinkedHashMap<>();
+    view.put("id", c.getId());
+    view.put("title", safe(c.getTitle()));
+    view.put("description", safe(c.getDescription()));
+    view.put("location", safe(c.getLocation()));
+    view.put("category", safe(c.getCategory()));
+    view.put("priority", safe(c.getPriority()));
+    view.put("status", safe(c.getStatus()));
+    view.put("department", safe(c.getDepartment()));
+    view.put("assignedTo", safe(c.getAssignedTo()));
+    view.put("createdAt", c.getCreatedAt()==null ? "" : c.getCreatedAt().toString());
+    view.put("updatedAt", c.getUpdatedAt()==null ? "" : c.getUpdatedAt().toString());
+    return view;
   }
 
   public List<Complaint> mine(UserAccount u) {
