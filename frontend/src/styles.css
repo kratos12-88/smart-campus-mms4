@@ -11,3 +11,6 @@
 .password-toggle{border:1px solid var(--line);background:#fff;padding:0 14px;font-weight:800;color:var(--teal);cursor:pointer}
 .password-toggle:hover{border-color:var(--teal)}
 .btn:disabled,.text-btn:disabled,.password-toggle:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
+
+.campus-map.map-invalid{border-color:#b34b3f;box-shadow:0 0 0 3px rgba(179,75,63,.08)}
+table input:disabled,table select:disabled{background:#f1f3f1;color:#77817f;cursor:not-allowed}

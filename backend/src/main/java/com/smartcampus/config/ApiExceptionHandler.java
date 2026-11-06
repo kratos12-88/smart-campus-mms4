@@ -6,12 +6,21 @@ import org.springframework.web.bind.annotation.*;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
-  @ExceptionHandler(ForbiddenException.class)
-  @ResponseStatus(HttpStatus.FORBIDDEN)
-  public Map<String,String> forbidden(ForbiddenException e){return Map.of("message",e.getMessage());}
   @ExceptionHandler(AuthException.class)
   @ResponseStatus(HttpStatus.UNAUTHORIZED)
   public Map<String,String> unauthorized(AuthException e){
+    return Map.of("message",e.getMessage());
+  }
+
+  @ExceptionHandler(ForbiddenException.class)
+  @ResponseStatus(HttpStatus.FORBIDDEN)
+  public Map<String,String> forbidden(ForbiddenException e){
+    return Map.of("message",e.getMessage());
+  }
+
+  @ExceptionHandler(NotFoundException.class)
+  @ResponseStatus(HttpStatus.NOT_FOUND)
+  public Map<String,String> notFound(NotFoundException e){
     return Map.of("message",e.getMessage());
   }
 

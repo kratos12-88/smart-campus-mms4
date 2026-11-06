@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.Base64;
 import java.util.stream.Collectors;
 
@@ -18,14 +19,23 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
+import com.smartcampus.config.ForbiddenException;
+import com.smartcampus.config.NotFoundException;
 import com.smartcampus.model.Complaint;
 import com.smartcampus.model.Counter;
 import com.smartcampus.model.UserAccount;
 import com.smartcampus.repository.ComplaintRepository;
-import com.smartcampus.config.ForbiddenException;
 
 @Service
 public class ComplaintService {
+  private static final Set<String> CATEGORIES = Set.of(
+    "SECURITY","ICT","ELECTRICITY","WATER","FACILITIES","HOSTEL","ACADEMIC","OTHER"
+  );
+  private static final Set<String> PRIORITIES = Set.of("LOW","MEDIUM","HIGH","URGENT");
+  private static final Set<String> STATUSES = Set.of(
+    "SUBMITTED","UNDER_REVIEW","ASSIGNED","IN_PROGRESS","AWAITING_STUDENT","RESOLVED","CLOSED","REJECTED"
+  );
+
   private final ComplaintRepository repo;
   private final MongoTemplate mongo;
 
@@ -35,8 +45,19 @@ public class ComplaintService {
   }
 
   public List<Complaint> recent() { return repo.findTop100ByOrderByCreatedAtDesc(); }
-  public Complaint one(long id) { return repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Complaint not found")); }
-  public List<Complaint> mine(UserAccount u) { return repo.findBySubmittedEmailIgnoreCaseOrderByCreatedAtDesc(u.getEmail()); }
+
+  public Complaint one(long id) {
+    if(id <= 0) throw new IllegalArgumentException("Complaint reference must be a positive number");
+    return repo.findById(id).orElseThrow(() -> new NotFoundException("Complaint not found"));
+  }
+
+  @SuppressWarnings("unchecked")
+  public Map<String,Object> publicView(long id) { return (Map<String,Object>)view(one(id),null); }
+
+  public List<Complaint> mine(UserAccount u) {
+    requireStudent(u);
+    return repo.findBySubmittedEmailIgnoreCaseOrderByCreatedAtDesc(u.getEmail());
+  }
 
   // Public tracking exposes status, never student identity, evidence or conversations.
   public Object view(Complaint c, UserAccount u) {
@@ -67,7 +88,7 @@ public class ComplaintService {
   }
 
   public List<Map<String,Object>> notifications(UserAccount u) {
-    return mine(u).stream().limit(20).map(c -> {
+    return ("STUDENT".equals(u.getRole()) ? mine(u) : forStaff(u)).stream().limit(20).map(c -> {
       Map<String,Object> item=new LinkedHashMap<>();
       item.put("id",c.getId()); item.put("complaintId",c.getId());
       item.put("message","Complaint #"+c.getId()+": "+c.getStatus().replace('_',' '));
@@ -83,20 +104,34 @@ public class ComplaintService {
   }
 
   public Complaint create(Complaint c, UserAccount u) {
-    if(c.getTitle()==null || c.getTitle().isBlank())
-      throw new IllegalArgumentException("Complaint title is required");
-    if(c.getDescription()==null || c.getDescription().isBlank())
-      throw new IllegalArgumentException("Complaint description is required");
-    if(c.getLocation()==null || c.getLocation().isBlank())
-      throw new IllegalArgumentException("Complaint location is required");
+    requireStudent(u);
+    if(c == null) throw new IllegalArgumentException("Complaint details are required");
 
-    if(c.getTitle().trim().length()>160 || c.getDescription().trim().length()>5000 || c.getLocation().trim().length()>120)
-      throw new IllegalArgumentException("Title, description or location is too long");
-    if(c.getCategory()==null || c.getPriority()==null)
-      throw new IllegalArgumentException("Category and priority are required");
-    if((c.getMapX()==null)!=(c.getMapY()==null) || (c.getMapX()!=null &&
-      (!Double.isFinite(c.getMapX()) || !Double.isFinite(c.getMapY()) || c.getMapX()<0 || c.getMapX()>100 || c.getMapY()<0 || c.getMapY()>100)))
-      throw new IllegalArgumentException("Map coordinates must be between 0 and 100");
+    String title = clean(c.getTitle());
+    String description = clean(c.getDescription());
+    String location = clean(c.getLocation());
+    String category = clean(c.getCategory()).toUpperCase();
+    String priority = clean(c.getPriority()).toUpperCase();
+    String mapLabel = clean(c.getMapLabel());
+
+    if(title.length() < 5 || title.length() > 120)
+      throw new IllegalArgumentException("Issue title must be between 5 and 120 characters");
+    if(description.length() < 10 || description.length() > 2000)
+      throw new IllegalArgumentException("Description must be between 10 and 2000 characters");
+    if(location.length() < 2 || location.length() > 120)
+      throw new IllegalArgumentException("Complaint location is required");
+    if(!CATEGORIES.contains(category))
+      throw new IllegalArgumentException("Select a valid complaint category");
+    if(!PRIORITIES.contains(priority))
+      throw new IllegalArgumentException("Select a valid priority");
+    if(c.getMapX()==null || c.getMapY()==null)
+      throw new IllegalArgumentException("Tag the issue location on the campus map");
+    if(!Double.isFinite(c.getMapX()) || !Double.isFinite(c.getMapY()) || c.getMapX() < 0 || c.getMapX() > 100 || c.getMapY() < 0 || c.getMapY() > 100)
+      throw new IllegalArgumentException("Campus map coordinates are invalid");
+    if(mapLabel.isBlank()) mapLabel = location;
+    if(mapLabel.length() > 120)
+      throw new IllegalArgumentException("Map label must be 120 characters or fewer");
+
     if(c.getEvidenceData()!=null && !c.getEvidenceData().isBlank()) {
       String data=c.getEvidenceData();
       if(data.length()>2800000 || !data.matches("^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$"))
@@ -115,57 +150,68 @@ public class ComplaintService {
       "WATER","Works & Maintenance","FACILITIES","Facilities","HOSTEL","Student Affairs",
       "ACADEMIC","Academic Affairs","OTHER","General Services"
     );
-    String cat = c.getCategory();
-    if(!sla.containsKey(cat)) throw new IllegalArgumentException("Invalid complaint category");
-    String priority = c.getPriority();
-    if(!List.of("LOW","MEDIUM","HIGH","URGENT").contains(priority)) throw new IllegalArgumentException("Invalid priority");
     Instant now = Instant.now();
 
     c.setId(nextId());
-    c.setMongoId(null);
-    c.setTitle(c.getTitle().trim()); c.setDescription(c.getDescription().trim()); c.setLocation(c.getLocation().trim());
-    c.setAssignedTo(null); c.setResolvedAt(null); c.setRating(null); c.setFeedback(null);
+    c.setMongoId(null); c.setAssignedTo(null); c.setResolvedAt(null); c.setRating(null); c.setFeedback(null);
     c.setComments(new ArrayList<>());
-    c.setCategory(cat);
+    c.setTitle(title);
+    c.setDescription(description);
+    c.setLocation(location);
+    c.setMapLabel(mapLabel);
+    c.setCategory(category);
     c.setPriority(priority);
     c.setStatus("SUBMITTED");
-    c.setDepartment(teams.get(cat));
+    c.setDepartment(teams.get(category));
     c.setSubmittedBy(u.getName());
     c.setSubmittedEmail(u.getEmail());
     c.setSchoolName(u.getSchoolName());
     c.setCampusName(u.getCampusName());
     c.setCreatedAt(now);
     c.setUpdatedAt(now);
-    c.setDueAt(now.plus(sla.get(cat), ChronoUnit.HOURS));
-    c.setAuditTrail(new ArrayList<>());
-    activity(c,u,"Complaint submitted");
+    c.setDueAt(now.plus(sla.get(category), ChronoUnit.HOURS));
+    c.setAuditTrail(new ArrayList<>()); activity(c,u,"Complaint submitted");
     return repo.save(c);
   }
 
-  public Complaint status(long id, String status, UserAccount u) {
+  public Complaint status(long id, String requestedStatus, UserAccount u) {
     Complaint c = one(id);
     checkStaffAccess(c,u);
-    if(status==null || !List.of("SUBMITTED","UNDER_REVIEW","ASSIGNED","IN_PROGRESS","AWAITING_STUDENT","RESOLVED","CLOSED","REJECTED").contains(status))
-      throw new IllegalArgumentException("Invalid status");
-    if(status.equals(c.getStatus())) return c;
-    if(List.of("RESOLVED","CLOSED","REJECTED").contains(c.getStatus()) && !List.of("RESOLVED","CLOSED").contains(status))
-      throw new IllegalArgumentException("Use the reopen action for a resolved complaint");
+
+    String status = clean(requestedStatus).toUpperCase();
+    if(!STATUSES.contains(status))
+      throw new IllegalArgumentException("Select a valid complaint status");
+
+    String current = safe(c.getStatus()).toUpperCase();
+    if(status.equals(current)) return c;
+    if(!isAllowedTransition(current, status))
+      throw new IllegalArgumentException("Invalid status transition from "+current+" to "+status);
+
     c.setStatus(status);
     c.setUpdatedAt(Instant.now());
-    if(List.of("RESOLVED","CLOSED").contains(status) && c.getResolvedAt()==null) c.setResolvedAt(Instant.now());
-    activity(c,u,"Status changed to "+status);
+    if(List.of("RESOLVED","CLOSED").contains(status)) {
+      if(c.getResolvedAt()==null) c.setResolvedAt(Instant.now());
+    } else {
+      c.setResolvedAt(null);
+    }
+    activity(c,u,"Status changed from "+current+" to "+status);
     return repo.save(c);
   }
 
   public Complaint assign(long id, String assignedTo, UserAccount u) {
     Complaint c = one(id);
     checkStaffAccess(c,u);
-    if(assignedTo == null || assignedTo.isBlank() || assignedTo.trim().length()>120)
-      throw new IllegalArgumentException("Assigned staff or team is required");
-    c.setAssignedTo(assignedTo.trim());
+
+    String assignee = clean(assignedTo);
+    if(assignee.length() < 2 || assignee.length() > 80)
+      throw new IllegalArgumentException("Assignee must be between 2 and 80 characters");
+    if(List.of("RESOLVED","CLOSED","REJECTED").contains(c.getStatus()))
+      throw new IllegalArgumentException("Resolved, closed, or rejected complaints cannot be assigned");
+
+    c.setAssignedTo(assignee);
     if("SUBMITTED".equals(c.getStatus())) c.setStatus("ASSIGNED");
     c.setUpdatedAt(Instant.now());
-    activity(c,u,"Assigned to "+assignedTo.trim());
+    activity(c,u,"Assigned to "+assignee);
     return repo.save(c);
   }
 
@@ -236,6 +282,16 @@ public class ComplaintService {
     );
   }
 
+  private boolean isAllowedTransition(String current,String next) {
+    if("SUBMITTED".equals(current)) return List.of("UNDER_REVIEW","ASSIGNED","REJECTED").contains(next);
+    if("UNDER_REVIEW".equals(current)) return List.of("ASSIGNED","REJECTED").contains(next);
+    if("ASSIGNED".equals(current)) return List.of("IN_PROGRESS","REJECTED").contains(next);
+    if("IN_PROGRESS".equals(current)) return List.of("AWAITING_STUDENT","RESOLVED","REJECTED").contains(next);
+    if("AWAITING_STUDENT".equals(current)) return List.of("IN_PROGRESS","RESOLVED","REJECTED").contains(next);
+    if("RESOLVED".equals(current)) return "CLOSED".equals(next);
+    return false;
+  }
+
   private long nextId() {
     Counter c = mongo.findAndModify(
       Query.query(Criteria.where("_id").is("complaint")),
@@ -247,21 +303,42 @@ public class ComplaintService {
     return c.getSeq();
   }
 
+  private void requireStudent(UserAccount u) {
+    if(u == null || !"STUDENT".equals(u.getRole()))
+      throw new ForbiddenException("Student access required");
+    if(u.getEmail()==null || u.getEmail().isBlank())
+      throw new ForbiddenException("Student account email is required");
+    if(u.getSchoolName()==null || u.getSchoolName().isBlank())
+      throw new ForbiddenException("Student institution is required");
+  }
+
   private void requireStaff(UserAccount u) {
     if(u == null || !List.of("STAFF","ADMIN").contains(u.getRole()))
       throw new ForbiddenException("Staff access required");
     if("STAFF".equals(u.getRole()) && (u.getSchoolName()==null || u.getSchoolName().isBlank()))
-      throw new IllegalArgumentException("Staff institution is required");
+      throw new ForbiddenException("Staff institution is required");
   }
 
   private void checkStaffAccess(Complaint c, UserAccount u) {
     requireStaff(u);
     if(!"ADMIN".equals(u.getRole()) || (u.getSchoolName()!=null && !u.getSchoolName().isBlank())) {
-      if(!Objects.equals(c.getSchoolName(),u.getSchoolName()))
+      if(u.getSchoolName()==null || c.getSchoolName()==null || !c.getSchoolName().equalsIgnoreCase(u.getSchoolName()))
         throw new ForbiddenException("Complaint belongs to another institution");
     }
   }
 
+  private List<String> audit(Complaint c) {
+    if(c.getAuditTrail()==null) c.setAuditTrail(new ArrayList<>());
+    return c.getAuditTrail();
+  }
+
+  private String clean(String value) {
+    return value == null ? "" : value.trim().replaceAll("\\s+", " ");
+  }
+
+  private String safe(String value) {
+    return value == null ? "" : value.replace('|','¦');
+  }
   private boolean canReadPrivate(Complaint c, UserAccount u) {
     if(u==null) return false;
     if(u.getEmail()!=null && u.getEmail().equalsIgnoreCase(c.getSubmittedEmail())) return true;
@@ -279,8 +356,6 @@ public class ComplaintService {
     if(text==null || text.isBlank() || text.trim().length()>max) throw new IllegalArgumentException(label+" is required and must be "+max+" characters or fewer");
     return text.trim();
   }
-
-  private String safe(String value) { return value==null ? "" : value.replace('|','¦'); }
 
   private void activity(Complaint c,UserAccount u,String message) {
     if(c.getAuditTrail()==null) c.setAuditTrail(new ArrayList<>());

@@ -194,33 +194,207 @@ function Login({setUser}) {
 
 function Report({user}) {
   const [form,setForm]=useState({title:"",description:"",location:"Main Library",category:"ICT",priority:"MEDIUM"});
-  const [point,setPoint]=useState(null),[error,setError]=useState("");
+  const [point,setPoint]=useState(null);
+  const [error,setError]=useState("");
+  const [fieldErrors,setFieldErrors]=useState({});
+  const [busy,setBusy]=useState(false);
+
   if(!user||user.role!=="STUDENT") return <Page eyebrow="Student reporting" title="Sign in before reporting"><Link className="btn primary" to="/login">Sign in</Link></Page>;
-  const submit=async e=>{e.preventDefault();if(!point)return setError("Tag the issue location on the campus map.");try{const c=await api.createComplaint({...form,...point,mapLabel:form.location});go(`/complaint/${c.id}`)}catch(e){setError(e.message)}};
-  const mapClick=e=>{const r=e.currentTarget.getBoundingClientRect();setPoint({mapX:+(((e.clientX-r.left)/r.width)*100).toFixed(2),mapY:+(((e.clientY-r.top)/r.height)*100).toFixed(2)})};
+
+  const update=(key,value)=>{
+    setForm({...form,[key]:value});
+    setFieldErrors({...fieldErrors,[key]:""});
+    setError("");
+  };
+
+  const validate=()=>{
+    const next={};
+    const title=form.title.trim().replace(/\s+/g," ");
+    const description=form.description.trim().replace(/\s+/g," ");
+
+    if(title.length<5) next.title="Issue title must be at least 5 characters.";
+    else if(title.length>120) next.title="Issue title must be 120 characters or fewer.";
+
+    if(description.length<10) next.description="Description must be at least 10 characters.";
+    else if(description.length>2000) next.description="Description must be 2000 characters or fewer.";
+
+    if(!SERVICES.some(s=>s[0]===form.category)) next.category="Select a valid category.";
+    if(!["LOW","MEDIUM","HIGH","URGENT"].includes(form.priority)) next.priority="Select a valid priority.";
+    if(!form.location) next.location="Select a campus location.";
+    if(!point) next.map="Tag the issue location on the campus map.";
+
+    setFieldErrors(next);
+    return Object.keys(next).length===0;
+  };
+
+  const submit=async e=>{
+    e.preventDefault();
+    if(busy||!validate()) return;
+    setBusy(true); setError("");
+    try{
+      const payload={
+        ...form,
+        title:form.title.trim().replace(/\s+/g," "),
+        description:form.description.trim().replace(/\s+/g," "),
+        ...point,
+        mapLabel:form.location
+      };
+      const complaint=await api.createComplaint(payload);
+      go(`/complaint/${complaint.id}`);
+    }catch(e){
+      setError(e.message||"Unable to submit complaint. Please review the form and try again.");
+    }finally{
+      setBusy(false);
+    }
+  };
+
+  const mapClick=e=>{
+    const r=e.currentTarget.getBoundingClientRect();
+    setPoint({
+      mapX:+(((e.clientX-r.left)/r.width)*100).toFixed(2),
+      mapY:+(((e.clientY-r.top)/r.height)*100).toFixed(2)
+    });
+    setFieldErrors({...fieldErrors,map:""});
+    setError("");
+  };
+
   return <Page eyebrow="New complaint" title="Report a campus issue"><div className="report-layout">
     <aside className="side-card"><h3>{user.schoolName}</h3><p>{user.campusName}</p><p>Choose a service, describe the problem and tag its location.</p></aside>
-    <form className="form-card" onSubmit={submit}>
+    <form className="form-card" onSubmit={submit} noValidate>
       <div className="form-grid">
-        <Field label="Issue title"><input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></Field>
-        <Field label="Priority"><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>URGENT</option></select></Field>
+        <Field label="Issue title">
+          <input maxLength="120" aria-invalid={!!fieldErrors.title} value={form.title} onChange={e=>update("title",e.target.value)}/>
+          <small className="field-help">{form.title.length}/120 characters</small>
+          {fieldErrors.title&&<small className="field-error">{fieldErrors.title}</small>}
+        </Field>
+        <Field label="Priority">
+          <select aria-invalid={!!fieldErrors.priority} value={form.priority} onChange={e=>update("priority",e.target.value)}>
+            <option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>URGENT</option>
+          </select>
+          {fieldErrors.priority&&<small className="field-error">{fieldErrors.priority}</small>}
+        </Field>
       </div>
       <div className="form-grid">
-        <Field label="Category"><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{SERVICES.map(s=><option key={s[0]} value={s[0]}>{s[1]}</option>)}</select></Field>
-        <Field label="Location"><select value={form.location} onChange={e=>setForm({...form,location:e.target.value})}><option>Main Library</option><option>Lecture Hall A</option><option>Admin Block</option><option>Hostel</option><option>Main Gate</option></select></Field>
+        <Field label="Category">
+          <select aria-invalid={!!fieldErrors.category} value={form.category} onChange={e=>update("category",e.target.value)}>
+            {SERVICES.map(s=><option key={s[0]} value={s[0]}>{s[1]}</option>)}
+          </select>
+          {fieldErrors.category&&<small className="field-error">{fieldErrors.category}</small>}
+        </Field>
+        <Field label="Location">
+          <select aria-invalid={!!fieldErrors.location} value={form.location} onChange={e=>update("location",e.target.value)}>
+            <option>Main Library</option><option>Lecture Hall A</option><option>Admin Block</option><option>Hostel</option><option>Main Gate</option>
+          </select>
+          {fieldErrors.location&&<small className="field-error">{fieldErrors.location}</small>}
+        </Field>
       </div>
-      <Field label="Description"><textarea required value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></Field>
-      <div className="campus-map" onClick={mapClick}><span className="building library">Library</span><span className="building halls">Lecture halls</span><span className="building hostel">Hostels</span><span className="building admin">Admin</span>{point&&<span className="pin" style={{left:`${point.mapX}%`,top:`${point.mapY}%`}}/>}</div>
-      {error&&<div className="error">{error}</div>}<button className="btn primary wide">Submit complaint</button>
+      <Field label="Description">
+        <textarea maxLength="2000" aria-invalid={!!fieldErrors.description} value={form.description} onChange={e=>update("description",e.target.value)}/>
+        <small className="field-help">{form.description.length}/2000 characters</small>
+        {fieldErrors.description&&<small className="field-error">{fieldErrors.description}</small>}
+      </Field>
+      <div className={`campus-map ${fieldErrors.map?"map-invalid":""}`} onClick={mapClick} role="button" tabIndex="0" aria-label="Campus location map">
+        <span className="building library">Library</span><span className="building halls">Lecture halls</span><span className="building hostel">Hostels</span><span className="building admin">Admin</span>
+        {point&&<span className="pin" style={{left:`${point.mapX}%`,top:`${point.mapY}%`}}/>}
+      </div>
+      {point?<small className="field-help">Location tagged at {point.mapX}%, {point.mapY}%.</small>:<small className="field-help">Click the map to tag the exact issue location.</small>}
+      {fieldErrors.map&&<small className="field-error">{fieldErrors.map}</small>}
+      {error&&<div className="error" role="alert">{error}</div>}
+      <button className="btn primary wide" disabled={busy}>{busy?"Submitting…":"Submit complaint"}</button>
     </form>
   </div></Page>;
 }
 
-function Track(){const[id,setId]=useState("");return <Page eyebrow="Complaint tracking" title="Track a complaint"><form className="form-card track-form" onSubmit={e=>{e.preventDefault();if(id.trim())go(`/complaint/${id.trim()}`)}}><Field label="Complaint reference"><input value={id} onChange={e=>setId(e.target.value)} placeholder="e.g. 1001"/></Field><button className="btn primary">Track complaint</button></form></Page>}
+function Track(){
+  const[id,setId]=useState("");
+  const[error,setError]=useState("");
+  const submit=e=>{
+    e.preventDefault();
+    const value=id.trim();
+    if(!value) return setError("Complaint reference is required.");
+    if(!/^\d+$/.test(value)) return setError("Complaint reference must contain numbers only.");
+    if(Number(value)<=0) return setError("Complaint reference must be greater than zero.");
+    if(value.length>12) return setError("Complaint reference is too long.");
+    setError("");
+    go(`/complaint/${value}`);
+  };
+  return <Page eyebrow="Complaint tracking" title="Track a complaint">
+    <form className="form-card track-form" onSubmit={submit} noValidate>
+      <Field label="Complaint reference">
+        <input inputMode="numeric" pattern="[0-9]*" maxLength="12" aria-invalid={!!error} value={id} onChange={e=>{setId(e.target.value);setError("")}} placeholder="e.g. 1001"/>
+        {error&&<small className="field-error">{error}</small>}
+      </Field>
+      <button className="btn primary">Track complaint</button>
+    </form>
+  </Page>
+}
 
 function Portal({user}){const[items,setItems]=useState([]);useEffect(()=>{if(user?.role==="STUDENT")api.mine().then(setItems).catch(()=>{})},[user]);if(!user||user.role!=="STUDENT")return <Page eyebrow="Student portal" title="Sign in required"><Link className="btn primary" to="/login">Sign in</Link></Page>;return <Page eyebrow="Student portal" title={`Welcome, ${user.name.split(" ")[0]}`}><div className="portal-grid"><section><div className="quick-grid"><Link className="quick" to="/report"><b>Report issue</b><span>Create a complaint</span></Link><Link className="quick" to="/track"><b>Track reference</b><span>Open by number</span></Link></div><h2>My complaints</h2><ComplaintList items={items}/></section><aside className="side-card"><h3>{user.schoolName}</h3><p>{user.campusName}</p></aside></div></Page>}
 
-function Staff({user}){const[items,setItems]=useState([]);const load=()=>api.staffComplaints().then(setItems).catch(()=>{});useEffect(()=>{if(["STAFF","ADMIN"].includes(user?.role))load()},[user]);if(!["STAFF","ADMIN"].includes(user?.role))return <Page eyebrow="Operations" title="Staff access required"><Link className="btn primary" to="/login">Sign in</Link></Page>;return <Page eyebrow="Operations console" title="Staff complaint management"><div className="table-wrap"><table><thead><tr><th>Ref</th><th>Issue</th><th>Location</th><th>Priority</th><th>Status</th><th>Assigned</th></tr></thead><tbody>{items.map(c=><tr key={c.id}><td><Link to={`/complaint/${c.id}`}>#{c.id}</Link></td><td>{c.title}</td><td>{c.location}</td><td>{c.priority}</td><td><select value={c.status} onChange={async e=>{await api.updateStatus(c.id,e.target.value);load()}}><option>SUBMITTED</option><option>ASSIGNED</option><option>IN_PROGRESS</option><option>RESOLVED</option><option>CLOSED</option></select></td><td><input defaultValue={c.assignedTo||user.name} onBlur={async e=>{await api.assign(c.id,e.target.value);load()}}/></td></tr>)}</tbody></table></div></Page>}
+function Staff({user}){
+  const[items,setItems]=useState([]);
+  const[error,setError]=useState("");
+  const[busyId,setBusyId]=useState(null);
+
+  const load=()=>api.staffComplaints().then(data=>{setItems(data);setError("")}).catch(e=>setError(e.message||"Unable to load complaints."));
+  useEffect(()=>{if(["STAFF","ADMIN"].includes(user?.role))load()},[user]);
+
+  if(!["STAFF","ADMIN"].includes(user?.role))return <Page eyebrow="Operations" title="Staff access required"><Link className="btn primary" to="/login">Sign in</Link></Page>;
+
+  const transitions=status=>{
+    if(status==="SUBMITTED") return ["SUBMITTED","ASSIGNED","REJECTED"];
+    if(status==="ASSIGNED") return ["ASSIGNED","IN_PROGRESS","REJECTED"];
+    if(status==="IN_PROGRESS") return ["IN_PROGRESS","RESOLVED","REJECTED"];
+    if(status==="RESOLVED") return ["RESOLVED","CLOSED","IN_PROGRESS"];
+    return [status];
+  };
+
+  const changeStatus=async(c,next)=>{
+    if(next===c.status) return;
+    setBusyId(c.id); setError("");
+    try{
+      await api.updateStatus(c.id,next);
+      await load();
+    }catch(e){
+      setError(`Complaint #${c.id}: ${e.message}`);
+      await load();
+    }finally{
+      setBusyId(null);
+    }
+  };
+
+  const assign=async(c,value)=>{
+    const assignedTo=value.trim().replace(/\s+/g," ");
+    if(assignedTo.length<2) return setError(`Complaint #${c.id}: assignee must be at least 2 characters.`);
+    if(assignedTo.length>80) return setError(`Complaint #${c.id}: assignee must be 80 characters or fewer.`);
+    if(assignedTo===(c.assignedTo||"").trim()) return;
+
+    setBusyId(c.id); setError("");
+    try{
+      await api.assign(c.id,assignedTo);
+      await load();
+    }catch(e){
+      setError(`Complaint #${c.id}: ${e.message}`);
+      await load();
+    }finally{
+      setBusyId(null);
+    }
+  };
+
+  return <Page eyebrow="Operations console" title="Staff complaint management">
+    {error&&<div className="error" role="alert">{error}</div>}
+    <div className="table-wrap"><table><thead><tr><th>Ref</th><th>Issue</th><th>Location</th><th>Priority</th><th>Status</th><th>Assigned</th></tr></thead>
+      <tbody>{items.map(c=><tr key={c.id}>
+        <td><Link to={`/complaint/${c.id}`}>#{c.id}</Link></td>
+        <td>{c.title}</td><td>{c.location}</td><td>{c.priority}</td>
+        <td><select value={c.status} disabled={busyId===c.id||["CLOSED","REJECTED"].includes(c.status)} onChange={e=>changeStatus(c,e.target.value)}>
+          {transitions(c.status).map(s=><option key={s}>{s}</option>)}
+        </select></td>
+        <td><input key={`${c.id}-${c.assignedTo||""}`} maxLength="80" disabled={busyId===c.id||["RESOLVED","CLOSED","REJECTED"].includes(c.status)} defaultValue={c.assignedTo||""} placeholder="Staff or team" onBlur={e=>assign(c,e.target.value)}/></td>
+      </tr>)}</tbody>
+    </table></div>
+  </Page>
+}
 
 function Admin({user}){const[data,setData]=useState({});useEffect(()=>{if(user?.role==="ADMIN")api.analytics().then(setData).catch(()=>{})},[user]);if(user?.role!=="ADMIN")return <Page eyebrow="Admin" title="Administrator access required"><Link className="btn primary" to="/login">Sign in</Link></Page>;return <Page eyebrow="Administration" title="Service analytics"><div className="analytics-grid"><Metric label="Total complaints" value={data.total||0}/><Metric label="Average resolution" value={`${data.averageResolutionHours||0}h`}/><Metric label="Student rating" value={`${data.averageRating||0}/5`}/></div></Page>}
 
