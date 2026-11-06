@@ -40,6 +40,11 @@ public class AuthService {
   @Value("${ADMIN_NAME:Campus Administrator}") private String adminName;
   @Value("${ADMIN_SCHOOL:}") private String adminSchool;
   @Value("${ADMIN_CAMPUS:}") private String adminCampus;
+  @Value("${DEMO_STUDENT_EMAIL:}") private String demoStudentEmail;
+  @Value("${DEMO_STUDENT_PASSWORD:}") private String demoStudentPassword;
+  @Value("${DEMO_STUDENT_NAME:Demo Student}") private String demoStudentName;
+  @Value("${DEMO_STUDENT_SCHOOL:NIIT Lagos}") private String demoStudentSchool;
+  @Value("${DEMO_STUDENT_CAMPUS:Lagos Campus}") private String demoStudentCampus;
 
   public AuthService(UserRepository users, AuthSessionRepository sessions) {
     this.users = users;
@@ -146,6 +151,24 @@ public class AuthService {
     u.setDepartment("Administration");
     u.setSchoolName(clean(adminSchool));
     u.setCampusName(clean(adminCampus));
+    users.save(u);
+  }
+
+  public void ensureBootstrapDemoStudent() {
+    String email = normalizeEmail(demoStudentEmail);
+    if(email.isBlank() || demoStudentPassword == null || demoStudentPassword.length() < 8) return;
+    if(!EMAIL_PATTERN.matcher(email).matches()) return;
+    if(users.findByEmailIgnoreCase(email).isPresent()) return;
+
+    UserAccount u = new UserAccount();
+    u.setName(clean(demoStudentName).isBlank() ? "Demo Student" : clean(demoStudentName));
+    u.setEmail(email);
+    u.setPasswordHash(hashPassword(demoStudentPassword));
+    u.setRole("STUDENT");
+    u.setDepartment("");
+    u.setSchoolName(clean(demoStudentSchool));
+    u.setCampusName(clean(demoStudentCampus));
+    u.setSchoolType("University");
     users.save(u);
   }
 
