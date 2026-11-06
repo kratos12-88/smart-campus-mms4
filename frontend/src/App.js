@@ -83,28 +83,105 @@ function Login({setUser}) {
   const [registerMode,setRegisterMode]=useState(false);
   const [form,setForm]=useState({name:"",email:"",password:"",schoolName:"",campusName:""});
   const [error,setError]=useState("");
+  const [fieldErrors,setFieldErrors]=useState({});
+  const [busy,setBusy]=useState(false);
+  const [showPassword,setShowPassword]=useState(false);
+
+  const update=(key,value)=>{
+    setForm({...form,[key]:value});
+    setFieldErrors({...fieldErrors,[key]:""});
+    setError("");
+  };
+
+  const validate=()=>{
+    const next={};
+    const email=form.email.trim();
+    if(!email) next.email="Email is required.";
+    else if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email="Enter a valid email address.";
+
+    if(!form.password) next.password="Password is required.";
+    if(registerMode){
+      const name=form.name.trim().replace(/\s+/g," ");
+      if(name.length<2) next.name="Enter your full name.";
+      else if(name.length>80) next.name="Full name must be 80 characters or fewer.";
+
+      if(form.schoolName.trim().length<2) next.schoolName="School is required.";
+      if(form.campusName.trim().length<2) next.campusName="Campus is required.";
+
+      if(form.password.length<8) next.password="Password must be at least 8 characters.";
+      else if(form.password.length>128) next.password="Password must be 128 characters or fewer.";
+      else if(!/[A-Z]/.test(form.password)||!/[a-z]/.test(form.password)||!/\d/.test(form.password))
+        next.password="Use uppercase, lowercase, and at least one number.";
+    }
+
+    setFieldErrors(next);
+    return Object.keys(next).length===0;
+  };
+
   const submit=async e=>{
-    e.preventDefault(); setError("");
+    e.preventDefault();
+    if(busy||!validate()) return;
+    setBusy(true); setError("");
     try{
-      const data=registerMode?await api.register(form):await api.login(form);
+      const payload={
+        ...form,
+        name:form.name.trim().replace(/\s+/g," "),
+        email:form.email.trim().toLowerCase(),
+        schoolName:form.schoolName.trim().replace(/\s+/g," "),
+        campusName:form.campusName.trim().replace(/\s+/g," ")
+      };
+      const data=registerMode?await api.register(payload):await api.login({email:payload.email,password:form.password});
       localStorage.setItem("sc_token",data.token);
       const profile={...data}; delete profile.token;
-      localStorage.setItem("sc_user",JSON.stringify(profile)); setUser(profile);
+      localStorage.setItem("sc_user",JSON.stringify(profile));
+      setUser(profile);
       go(profile.role==="STUDENT"?"/portal":profile.role==="ADMIN"?"/admin":"/staff");
-    }catch(e){setError(e.message)}
+    }catch(e){
+      setError(e.message||"Unable to sign in. Please try again.");
+    }finally{
+      setBusy(false);
+    }
   };
+
+  const switchMode=()=>{
+    setRegisterMode(!registerMode);
+    setError("");
+    setFieldErrors({});
+    setShowPassword(false);
+    setForm({name:"",email:form.email.trim(),password:"",schoolName:"",campusName:""});
+  };
+
   return <Page eyebrow="Account access" title={registerMode?"Create student account":"Sign in"}>
-    <form className="form-card auth-card" onSubmit={submit}>
+    <form className="form-card auth-card" onSubmit={submit} noValidate>
       {registerMode && <>
-        <Field label="Full name"><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field>
-        <Field label="School"><input required value={form.schoolName} onChange={e=>setForm({...form,schoolName:e.target.value})}/></Field>
-        <Field label="Campus"><input required value={form.campusName} onChange={e=>setForm({...form,campusName:e.target.value})}/></Field>
+        <Field label="Full name">
+          <input autoComplete="name" maxLength="80" aria-invalid={!!fieldErrors.name} value={form.name} onChange={e=>update("name",e.target.value)}/>
+          {fieldErrors.name&&<small className="field-error">{fieldErrors.name}</small>}
+        </Field>
+        <Field label="School">
+          <input autoComplete="organization" maxLength="120" aria-invalid={!!fieldErrors.schoolName} value={form.schoolName} onChange={e=>update("schoolName",e.target.value)}/>
+          {fieldErrors.schoolName&&<small className="field-error">{fieldErrors.schoolName}</small>}
+        </Field>
+        <Field label="Campus">
+          <input maxLength="120" aria-invalid={!!fieldErrors.campusName} value={form.campusName} onChange={e=>update("campusName",e.target.value)}/>
+          {fieldErrors.campusName&&<small className="field-error">{fieldErrors.campusName}</small>}
+        </Field>
       </>}
-      <Field label="Email"><input type="email" required value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></Field>
-      <Field label="Password"><input type="password" minLength="8" required value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></Field>
-      {error&&<div className="error">{error}</div>}
-      <button className="btn primary wide">{registerMode?"Create account":"Sign in"}</button>
-      <button type="button" className="text-btn" onClick={()=>setRegisterMode(!registerMode)}>{registerMode?"Already registered? Sign in":"New student? Create an account"}</button>
+      <Field label="Email">
+        <input type="email" inputMode="email" autoCapitalize="none" autoComplete="email" maxLength="254" aria-invalid={!!fieldErrors.email} value={form.email} onChange={e=>update("email",e.target.value)}/>
+        {fieldErrors.email&&<small className="field-error">{fieldErrors.email}</small>}
+      </Field>
+      <Field label="Password">
+        <div className="password-row">
+          <input type={showPassword?"text":"password"} autoComplete={registerMode?"new-password":"current-password"} maxLength="128" aria-invalid={!!fieldErrors.password} value={form.password} onChange={e=>update("password",e.target.value)}/>
+          <button type="button" className="password-toggle" onClick={()=>setShowPassword(!showPassword)}>{showPassword?"Hide":"Show"}</button>
+        </div>
+        {registerMode&&<small className="field-help">8–128 characters with uppercase, lowercase, and a number.</small>}
+        {fieldErrors.password&&<small className="field-error">{fieldErrors.password}</small>}
+      </Field>
+      {error&&<div className="error" role="alert">{error}</div>}
+      <button className="btn primary wide" disabled={busy}>{busy?"Please wait…":registerMode?"Create account":"Sign in"}</button>
+      <button type="button" className="text-btn" onClick={switchMode} disabled={busy}>{registerMode?"Already registered? Sign in":"New student? Create an account"}</button>
     </form>
   </Page>;
 }
@@ -149,7 +226,19 @@ export default function App(){
   const route=useRoute();
   const[user,setUser]=useState(()=>JSON.parse(localStorage.getItem("sc_user")||"null"));
   const[summary,setSummary]=useState({});
-  useEffect(()=>{api.summary().then(setSummary).catch(()=>{});if(localStorage.getItem("sc_token"))api.me().then(setUser).catch(()=>{})},[]);
+  useEffect(()=>{
+    api.summary().then(setSummary).catch(()=>{});
+    if(localStorage.getItem("sc_token")){
+      api.me().then(profile=>{
+        setUser(profile);
+        localStorage.setItem("sc_user",JSON.stringify(profile));
+      }).catch(()=>{
+        localStorage.removeItem("sc_token");
+        localStorage.removeItem("sc_user");
+        setUser(null);
+      });
+    }
+  },[]);
   let content;
   if(route==="/")content=<Home summary={summary}/>;
   else if(route==="/services")content=<Services/>;
