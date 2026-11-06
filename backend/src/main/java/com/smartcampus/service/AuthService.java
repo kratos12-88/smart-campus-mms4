@@ -52,6 +52,7 @@ public class AuthService {
     String name = clean(body.get("name"));
     String email = normalizeEmail(body.get("email"));
     String password = Optional.ofNullable(body.get("password")).orElse("");
+    String confirmPassword = Optional.ofNullable(body.get("confirmPassword")).orElse("");
     String schoolName = clean(body.get("schoolName"));
     String campusName = clean(body.get("campusName"));
     String schoolType = clean(body.getOrDefault("schoolType","University"));
@@ -60,6 +61,8 @@ public class AuthService {
     validateName(name);
     validateEmail(email);
     validatePassword(password);
+    if(confirmPassword.isBlank()) throw new IllegalArgumentException("Please confirm your password");
+    if(!password.equals(confirmPassword)) throw new IllegalArgumentException("Passwords do not match");
     requireText(schoolName, "School is required", 2, 120);
     requireText(campusName, "Campus is required", 2, 120);
     if(!schoolType.isBlank()) requireText(schoolType, "School type is invalid", 2, 60);
