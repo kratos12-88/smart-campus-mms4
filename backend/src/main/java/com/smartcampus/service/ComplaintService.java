@@ -260,7 +260,7 @@ public class ComplaintService {
   }
 
   private String clean(String value) {
-    return value == null ? "" : value.trim().replaceAll("\s+", " ");
+    return value == null ? "" : value.trim().replaceAll("\\s+", " ");
   }
 
   private String safe(String value) {
