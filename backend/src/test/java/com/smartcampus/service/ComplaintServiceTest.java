@@ -143,6 +143,37 @@ class ComplaintServiceTest {
     assertEquals(2.5, (Double) analytics.get("averageResolutionHours"), 0.001);
   }
 
+  @Test
+  void studentCannotReadStaffComplaintsOrAnalytics() {
+    assertThrows(IllegalArgumentException.class, () -> service.forStaff(student));
+    assertThrows(IllegalArgumentException.class, () -> service.analytics(student));
+    verifyNoInteractions(repo);
+  }
+
+  @Test
+  void staffListIsScopedToInstitution() {
+    when(repo.findBySchoolNameIgnoreCaseOrderByCreatedAtDesc("Example University")).thenReturn(List.of());
+    assertTrue(service.forStaff(staff).isEmpty());
+    verify(repo).findBySchoolNameIgnoreCaseOrderByCreatedAtDesc("Example University");
+    verify(repo, never()).findTop100ByOrderByCreatedAtDesc();
+  }
+
+  @Test
+  void staffWithoutInstitutionIsRejected() {
+    staff.setSchoolName(" ");
+    assertThrows(IllegalArgumentException.class, () -> service.forStaff(staff));
+    verifyNoInteractions(repo);
+  }
+
+  @Test
+  void unscopedAdminCanReadStaffComplaints() {
+    staff.setRole("ADMIN");
+    staff.setSchoolName("");
+    when(repo.findTop100ByOrderByCreatedAtDesc()).thenReturn(List.of());
+    assertTrue(service.forStaff(staff).isEmpty());
+    verify(repo).findTop100ByOrderByCreatedAtDesc();
+  }
+
   private Complaint complaint(Long id, String status, String schoolName) {
     Complaint c = new Complaint();
     c.setId(id);
