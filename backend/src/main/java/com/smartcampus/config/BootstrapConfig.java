@@ -8,7 +8,10 @@ import com.smartcampus.service.AuthService;
 @Configuration
 public class BootstrapConfig {
   @Bean
-  CommandLineRunner bootstrapAdmin(AuthService auth) {
-    return args -> auth.ensureBootstrapAdmin();
+  CommandLineRunner bootstrapAccounts(AuthService auth) {
+    return args -> {
+      auth.ensureBootstrapAdmin();
+      auth.ensureBootstrapDemoStudent();
+    };
   }
 }
