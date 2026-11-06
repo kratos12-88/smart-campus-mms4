@@ -1,0 +1,114 @@
+package com.smartcampus.service;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.util.Optional;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
+
+import com.smartcampus.model.Complaint;
+import com.smartcampus.model.Counter;
+import com.smartcampus.model.UserAccount;
+import com.smartcampus.repository.ComplaintRepository;
+
+class ComplaintServiceTest {
+  @Mock private ComplaintRepository repo;
+  @Mock private MongoTemplate mongo;
+
+  private ComplaintService service;
+  private UserAccount student;
+  private UserAccount staff;
+
+  @BeforeEach
+  void setUp() {
+    MockitoAnnotations.openMocks(this);
+    service = new ComplaintService(repo, mongo);
+
+    student = new UserAccount();
+    student.setName("Student One");
+    student.setEmail("student@example.com");
+    student.setRole("STUDENT");
+    student.setSchoolName("Example University");
+    student.setCampusName("Main Campus");
+
+    staff = new UserAccount();
+    staff.setName("Staff One");
+    staff.setEmail("staff@example.com");
+    staff.setRole("STAFF");
+    staff.setSchoolName("Example University");
+    staff.setCampusName("Main Campus");
+  }
+
+  @Test
+  void createPopulatesWorkflowFieldsAndSla() {
+    Counter counter = new Counter();
+    counter.setSeq(42);
+    when(mongo.findAndModify(
+      any(Query.class),
+      any(Update.class),
+      any(FindAndModifyOptions.class),
+      eq(Counter.class)
+    )).thenReturn(counter);
+    when(repo.save(any(Complaint.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    Complaint input = new Complaint();
+    input.setTitle("No power");
+    input.setDescription("Power outage in laboratory");
+    input.setCategory("ELECTRICITY");
+
+    Complaint created = service.create(input, student);
+
+    assertEquals(Long.valueOf(42), created.getId());
+    assertEquals("SUBMITTED", created.getStatus());
+    assertEquals("Electrical Unit", created.getDepartment());
+    assertEquals("student@example.com", created.getSubmittedEmail());
+    assertEquals("Example University", created.getSchoolName());
+    assertNotNull(created.getDueAt());
+    assertFalse(created.getAuditTrail().isEmpty());
+  }
+
+  @Test
+  void assignmentMovesSubmittedComplaintToAssigned() {
+    Complaint c = complaint(7L, "SUBMITTED", "Example University");
+    when(repo.findById(7L)).thenReturn(Optional.of(c));
+    when(repo.save(any(Complaint.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    Complaint updated = service.assign(7L, "Electrical Team", staff);
+
+    assertEquals("ASSIGNED", updated.getStatus());
+    assertEquals("Electrical Team", updated.getAssignedTo());
+  }
+
+  @Test
+  void statusRejectsInvalidWorkflowState() {
+    Complaint c = complaint(9L, "ASSIGNED", "Example University");
+    when(repo.findById(9L)).thenReturn(Optional.of(c));
+
+    assertThrows(IllegalArgumentException.class, () -> service.status(9L, "DONE", staff));
+  }
+
+  @Test
+  void staffCannotChangeComplaintFromAnotherInstitution() {
+    Complaint c = complaint(11L, "SUBMITTED", "Other University");
+    when(repo.findById(11L)).thenReturn(Optional.of(c));
+
+    assertThrows(IllegalArgumentException.class, () -> service.assign(11L, "Team A", staff));
+  }
+
+  private Complaint complaint(Long id, String status, String schoolName) {
+    Complaint c = new Complaint();
+    c.setId(id);
+    c.setStatus(status);
+    c.setSchoolName(schoolName);
+    return c;
+  }
+}
