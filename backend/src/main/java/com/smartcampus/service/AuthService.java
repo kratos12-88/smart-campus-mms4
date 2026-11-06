@@ -35,11 +35,11 @@ public class AuthService {
   private final UserRepository users;
   private final AuthSessionRepository sessions;
 
-  @Value("\${ADMIN_EMAIL:}") private String adminEmail;
-  @Value("\${ADMIN_PASSWORD:}") private String adminPassword;
-  @Value("\${ADMIN_NAME:Campus Administrator}") private String adminName;
-  @Value("\${ADMIN_SCHOOL:}") private String adminSchool;
-  @Value("\${ADMIN_CAMPUS:}") private String adminCampus;
+  @Value("${ADMIN_EMAIL:}") private String adminEmail;
+  @Value("${ADMIN_PASSWORD:}") private String adminPassword;
+  @Value("${ADMIN_NAME:Campus Administrator}") private String adminName;
+  @Value("${ADMIN_SCHOOL:}") private String adminSchool;
+  @Value("${ADMIN_CAMPUS:}") private String adminCampus;
 
   public AuthService(UserRepository users, AuthSessionRepository sessions) {
     this.users = users;
