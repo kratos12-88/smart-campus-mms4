@@ -7,7 +7,13 @@ async function request(path, options = {}) {
 
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || "Request failed");
+  if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem("sc_token");
+      localStorage.removeItem("sc_user");
+    }
+    throw new Error(data.message || `Request failed (${response.status})`);
+  }
   return data;
 }
 
