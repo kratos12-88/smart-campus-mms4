@@ -5,19 +5,50 @@ Smart Campus is a full-stack campus complaint management system built from techn
 ## Course-aligned stack
 
 - **Frontend:** React, HTML5, CSS3
-- **Backend:** Java 12-compatible source with Spring Boot
+- **Backend:** Java 12-compatible source with Spring Boot 2.7
 - **Database:** MongoDB / NoSQL
 - **Testing:** JUnit 5
 - **Deployment:** Docker
-- **Semester 4 CI/Kubernetes practice:** GitHub Actions + Minikube workflow
+- **CI/Kubernetes:** GitHub Actions + Minikube + Kubernetes manifests
 
 ## Architecture
 
-React + HTML5 + CSS3 → Spring Boot REST API → MongoDB
+```text
+React + HTML5 + CSS3
+        |
+        v
+Spring Boot REST API
+        |
+        v
+MongoDB
+```
 
-JUnit 5 tests the Java backend. Docker packages the application for consistent deployment.
+The frontend and backend are packaged together by the root Dockerfile. MongoDB stores users, authentication sessions, complaint records, and counters.
 
-## Run frontend for development
+## Core application flow
+
+### Students
+1. Register and sign in.
+2. Select institution/campus.
+3. Submit a complaint with category, description, and schematic campus location.
+4. Receive a complaint reference.
+5. Track complaint progress.
+
+### Staff
+1. View complaints for their institution.
+2. Assign complaints.
+3. Move complaints through workflow states.
+
+### Administrators
+1. Review service activity.
+2. View complaint analytics.
+3. Monitor open, resolved, and overdue cases.
+
+> Location tagging in this project is schematic campus tagging. It is not a Google Maps or live geospatial integration.
+
+## Run locally
+
+### Frontend development
 
 ```bash
 cd frontend
@@ -25,7 +56,7 @@ npm install
 npm start
 ```
 
-## Run backend for development
+### Backend development
 
 Start MongoDB, then:
 
@@ -34,7 +65,7 @@ cd backend
 mvn spring-boot:run
 ```
 
-## Run the complete project with Docker
+### Complete Docker environment
 
 ```bash
 docker compose up --build
@@ -46,20 +77,68 @@ Open:
 http://localhost:8080
 ```
 
+## Tests
+
+Run backend tests with:
+
+```bash
+cd backend
+mvn test
+```
+
+The test suite includes unit coverage for authentication/session behavior and complaint workflow behavior. It is still a focused project test suite, not comprehensive production coverage.
+
+## Kubernetes
+
+Kubernetes manifests are stored in:
+
+```text
+k8s/
+  mongodb.yaml
+  deployment.yaml
+  service.yaml
+```
+
+The CI workflow creates a local Minikube cluster, builds the Smart Campus Docker image inside Minikube, creates the `db-vault` Kubernetes secret, deploys MongoDB and Smart Campus, waits for both deployments, and calls the database-backed `/api/dashboard/summary` endpoint.
+
 ## GitHub Actions
 
-The repository includes:
+Workflow:
 
 ```text
 .github/workflows/kubernetes-secret.yaml
 ```
 
-It starts Minikube on GitHub Actions and creates a Kubernetes secret named `db-vault` using the repository secret `DB_PASSWORD`.
+The workflow performs:
 
-Before relying on the secret value, add `DB_PASSWORD` under:
+1. Checkout.
+2. JUnit backend tests.
+3. Minikube startup.
+4. Docker image build.
+5. Kubernetes secret creation.
+6. MongoDB deployment.
+7. Smart Campus deployment.
+8. Rollout verification.
+9. Database-backed API verification.
 
-**GitHub repository → Settings → Secrets and variables → Actions → New repository secret**
+## Render deployment
 
-## Defense summary
+Render service:
 
-> Smart Campus uses React with HTML5 and CSS3 for the responsive frontend. Java and Spring Boot provide REST APIs and business logic. MongoDB stores users and complaint records as NoSQL documents. JUnit 5 is used for backend testing, and Docker is used to package the application. The GitHub Actions workflow demonstrates the Kubernetes/Minikube concepts covered in Semester 4.
+```text
+https://smart-campus-mms4-api.onrender.com
+```
+
+The service is configured to deploy the root Dockerfile. Production requires:
+
+```text
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/smart_campus?... 
+```
+
+Set the real Atlas connection string in Render under **Environment** as `MONGODB_URI`. Do not commit database credentials to this repository.
+
+At the time this documentation was updated, the previous Render build succeeded but the runtime deployment exited with a non-zero status. The production deployment should not be described as fully operational until a deployment succeeds and a database-backed endpoint such as `/api/dashboard/summary` responds successfully.
+
+## Defence summary
+
+> Smart Campus uses React with HTML5 and CSS3 for the responsive frontend. Java and Spring Boot provide the REST APIs and business logic. MongoDB stores users, sessions, complaints, and counters as NoSQL documents. JUnit 5 tests authentication and complaint workflow behavior. Docker packages the complete application. GitHub Actions starts Minikube, deploys the Kubernetes manifests, and verifies a database-backed API request. Render is configured for production deployment, with the MongoDB Atlas `MONGODB_URI` required for the final live deployment.
