@@ -18,6 +18,8 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 
+import com.smartcampus.config.ForbiddenException;
+import com.smartcampus.config.NotFoundException;
 import com.smartcampus.model.Complaint;
 import com.smartcampus.model.Counter;
 import com.smartcampus.model.UserAccount;
@@ -63,10 +65,9 @@ class ComplaintServiceTest {
     )).thenReturn(counter);
     when(repo.save(any(Complaint.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-    Complaint input = new Complaint();
-    input.setTitle("No power");
-    input.setDescription("Power outage in laboratory");
-    input.setLocation("Science Block");
+    Complaint input = validComplaint();
+    input.setTitle("No power in laboratory");
+    input.setDescription("Power outage in the science laboratory since morning.");
     input.setCategory("ELECTRICITY");
     input.setPriority("HIGH");
 
@@ -83,12 +84,40 @@ class ComplaintServiceTest {
   }
 
   @Test
-  void createRejectsMissingDescription() {
-    Complaint input = new Complaint();
-    input.setTitle("No power");
-    input.setLocation("Science Block");
-
+  void createRejectsShortDescription() {
+    Complaint input = validComplaint();
+    input.setDescription("Too short");
     assertThrows(IllegalArgumentException.class, () -> service.create(input, student));
+  }
+
+  @Test
+  void createRejectsMissingMapTag() {
+    Complaint input = validComplaint();
+    input.setMapX(null);
+    input.setMapY(null);
+    assertThrows(IllegalArgumentException.class, () -> service.create(input, student));
+  }
+
+  @Test
+  void createRejectsInvalidCategoryAndPriority() {
+    Complaint badCategory = validComplaint();
+    badCategory.setCategory("FAKE");
+    assertThrows(IllegalArgumentException.class, () -> service.create(badCategory, student));
+
+    Complaint badPriority = validComplaint();
+    badPriority.setPriority("CRITICAL");
+    assertThrows(IllegalArgumentException.class, () -> service.create(badPriority, student));
+  }
+
+  @Test
+  void nonStudentCannotCreateComplaint() {
+    assertThrows(ForbiddenException.class, () -> service.create(validComplaint(), staff));
+  }
+
+  @Test
+  void complaintReferenceMustExist() {
+    when(repo.findById(999L)).thenReturn(Optional.empty());
+    assertThrows(NotFoundException.class, () -> service.one(999L));
   }
 
   @Test
@@ -104,19 +133,44 @@ class ComplaintServiceTest {
   }
 
   @Test
-  void assignmentRejectsBlankAssignee() {
+  void assignmentRejectsBlankOrClosedComplaint() {
     Complaint c = complaint(8L, "SUBMITTED", "Example University");
     when(repo.findById(8L)).thenReturn(Optional.of(c));
-
     assertThrows(IllegalArgumentException.class, () -> service.assign(8L, " ", staff));
+
+    Complaint closed = complaint(81L, "CLOSED", "Example University");
+    when(repo.findById(81L)).thenReturn(Optional.of(closed));
+    assertThrows(IllegalArgumentException.class, () -> service.assign(81L, "Team A", staff));
   }
 
   @Test
-  void statusRejectsInvalidWorkflowState() {
+  void statusAllowsOnlyValidTransitions() {
     Complaint c = complaint(9L, "ASSIGNED", "Example University");
     when(repo.findById(9L)).thenReturn(Optional.of(c));
+    when(repo.save(any(Complaint.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-    assertThrows(IllegalArgumentException.class, () -> service.status(9L, "DONE", staff));
+    Complaint updated = service.status(9L, "IN_PROGRESS", staff);
+    assertEquals("IN_PROGRESS", updated.getStatus());
+  }
+
+  @Test
+  void statusRejectsSkippingWorkflow() {
+    Complaint c = complaint(10L, "SUBMITTED", "Example University");
+    when(repo.findById(10L)).thenReturn(Optional.of(c));
+
+    IllegalArgumentException ex = assertThrows(
+      IllegalArgumentException.class,
+      () -> service.status(10L, "RESOLVED", staff)
+    );
+    assertTrue(ex.getMessage().contains("Invalid status transition"));
+  }
+
+  @Test
+  void statusRejectsUnknownState() {
+    Complaint c = complaint(12L, "ASSIGNED", "Example University");
+    when(repo.findById(12L)).thenReturn(Optional.of(c));
+
+    assertThrows(IllegalArgumentException.class, () -> service.status(12L, "DONE", staff));
   }
 
   @Test
@@ -124,7 +178,27 @@ class ComplaintServiceTest {
     Complaint c = complaint(11L, "SUBMITTED", "Other University");
     when(repo.findById(11L)).thenReturn(Optional.of(c));
 
-    assertThrows(IllegalArgumentException.class, () -> service.assign(11L, "Team A", staff));
+    assertThrows(ForbiddenException.class, () -> service.assign(11L, "Team A", staff));
+  }
+
+  @Test
+  void publicTrackingViewDoesNotExposeStudentIdentity() {
+    Complaint c = complaint(20L, "SUBMITTED", "Example University");
+    c.setTitle("Wi-Fi outage");
+    c.setDescription("Wi-Fi is unavailable in the main library.");
+    c.setLocation("Main Library");
+    c.setCategory("ICT");
+    c.setPriority("MEDIUM");
+    c.setDepartment("ICT Services");
+    c.setSubmittedBy("Private Student");
+    c.setSubmittedEmail("private@example.com");
+    when(repo.findById(20L)).thenReturn(Optional.of(c));
+
+    Map<String,Object> view = service.publicView(20L);
+
+    assertEquals(20L, view.get("id"));
+    assertFalse(view.containsKey("submittedEmail"));
+    assertFalse(view.containsKey("submittedBy"));
   }
 
   @Test
@@ -145,8 +219,8 @@ class ComplaintServiceTest {
 
   @Test
   void studentCannotReadStaffComplaintsOrAnalytics() {
-    assertThrows(IllegalArgumentException.class, () -> service.forStaff(student));
-    assertThrows(IllegalArgumentException.class, () -> service.analytics(student));
+    assertThrows(ForbiddenException.class, () -> service.forStaff(student));
+    assertThrows(ForbiddenException.class, () -> service.analytics(student));
     verifyNoInteractions(repo);
   }
 
@@ -161,7 +235,7 @@ class ComplaintServiceTest {
   @Test
   void staffWithoutInstitutionIsRejected() {
     staff.setSchoolName(" ");
-    assertThrows(IllegalArgumentException.class, () -> service.forStaff(staff));
+    assertThrows(ForbiddenException.class, () -> service.forStaff(staff));
     verifyNoInteractions(repo);
   }
 
@@ -172,6 +246,19 @@ class ComplaintServiceTest {
     when(repo.findTop100ByOrderByCreatedAtDesc()).thenReturn(List.of());
     assertTrue(service.forStaff(staff).isEmpty());
     verify(repo).findTop100ByOrderByCreatedAtDesc();
+  }
+
+  private Complaint validComplaint() {
+    Complaint c = new Complaint();
+    c.setTitle("Broken Wi-Fi access point");
+    c.setDescription("The wireless access point has been offline since this morning.");
+    c.setLocation("Main Library");
+    c.setCategory("ICT");
+    c.setPriority("MEDIUM");
+    c.setMapLabel("Main Library");
+    c.setMapX(50.0);
+    c.setMapY(50.0);
+    return c;
   }
 
   private Complaint complaint(Long id, String status, String schoolName) {
