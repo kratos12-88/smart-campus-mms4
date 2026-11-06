@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -63,7 +66,9 @@ class ComplaintServiceTest {
     Complaint input = new Complaint();
     input.setTitle("No power");
     input.setDescription("Power outage in laboratory");
+    input.setLocation("Science Block");
     input.setCategory("ELECTRICITY");
+    input.setPriority("HIGH");
 
     Complaint created = service.create(input, student);
 
@@ -72,8 +77,18 @@ class ComplaintServiceTest {
     assertEquals("Electrical Unit", created.getDepartment());
     assertEquals("student@example.com", created.getSubmittedEmail());
     assertEquals("Example University", created.getSchoolName());
+    assertEquals("HIGH", created.getPriority());
     assertNotNull(created.getDueAt());
     assertFalse(created.getAuditTrail().isEmpty());
+  }
+
+  @Test
+  void createRejectsMissingDescription() {
+    Complaint input = new Complaint();
+    input.setTitle("No power");
+    input.setLocation("Science Block");
+
+    assertThrows(IllegalArgumentException.class, () -> service.create(input, student));
   }
 
   @Test
@@ -86,6 +101,14 @@ class ComplaintServiceTest {
 
     assertEquals("ASSIGNED", updated.getStatus());
     assertEquals("Electrical Team", updated.getAssignedTo());
+  }
+
+  @Test
+  void assignmentRejectsBlankAssignee() {
+    Complaint c = complaint(8L, "SUBMITTED", "Example University");
+    when(repo.findById(8L)).thenReturn(Optional.of(c));
+
+    assertThrows(IllegalArgumentException.class, () -> service.assign(8L, " ", staff));
   }
 
   @Test
@@ -104,11 +127,28 @@ class ComplaintServiceTest {
     assertThrows(IllegalArgumentException.class, () -> service.assign(11L, "Team A", staff));
   }
 
+  @Test
+  void analyticsCalculatesAverageResolutionTime() {
+    Complaint resolved = complaint(15L, "RESOLVED", "Example University");
+    resolved.setCategory("ICT");
+    resolved.setCreatedAt(Instant.parse("2026-11-01T10:00:00Z"));
+    resolved.setResolvedAt(Instant.parse("2026-11-01T12:30:00Z"));
+
+    when(repo.findBySchoolNameIgnoreCaseOrderByCreatedAtDesc("Example University"))
+      .thenReturn(List.of(resolved));
+
+    Map<String,Object> analytics = service.analytics(staff);
+
+    assertEquals(1, analytics.get("total"));
+    assertEquals(2.5, (Double) analytics.get("averageResolutionHours"), 0.001);
+  }
+
   private Complaint complaint(Long id, String status, String schoolName) {
     Complaint c = new Complaint();
     c.setId(id);
     c.setStatus(status);
     c.setSchoolName(schoolName);
+    c.setAuditTrail(new java.util.ArrayList<>());
     return c;
   }
 }
