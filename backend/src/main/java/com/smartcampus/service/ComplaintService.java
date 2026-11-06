@@ -1,5 +1,6 @@
 package com.smartcampus.service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -40,6 +41,13 @@ public class ComplaintService {
   }
 
   public Complaint create(Complaint c, UserAccount u) {
+    if(c.getTitle()==null || c.getTitle().isBlank())
+      throw new IllegalArgumentException("Complaint title is required");
+    if(c.getDescription()==null || c.getDescription().isBlank())
+      throw new IllegalArgumentException("Complaint description is required");
+    if(c.getLocation()==null || c.getLocation().isBlank())
+      throw new IllegalArgumentException("Complaint location is required");
+
     Map<String,Integer> sla = Map.of(
       "SECURITY",4,"ICT",24,"ELECTRICITY",24,"WATER",24,
       "FACILITIES",48,"HOSTEL",48,"ACADEMIC",48,"OTHER",72
@@ -50,10 +58,12 @@ public class ComplaintService {
       "ACADEMIC","Academic Affairs","OTHER","General Services"
     );
     String cat = sla.containsKey(c.getCategory()) ? c.getCategory() : "OTHER";
+    String priority = List.of("LOW","MEDIUM","HIGH","URGENT").contains(c.getPriority()) ? c.getPriority() : "MEDIUM";
     Instant now = Instant.now();
 
     c.setId(nextId());
     c.setCategory(cat);
+    c.setPriority(priority);
     c.setStatus("SUBMITTED");
     c.setDepartment(teams.get(cat));
     c.setSubmittedBy(u.getName());
@@ -82,10 +92,12 @@ public class ComplaintService {
   public Complaint assign(long id, String assignedTo, UserAccount u) {
     Complaint c = one(id);
     checkStaffAccess(c,u);
-    c.setAssignedTo(assignedTo);
+    if(assignedTo == null || assignedTo.isBlank())
+      throw new IllegalArgumentException("Assigned staff or team is required");
+    c.setAssignedTo(assignedTo.trim());
     if("SUBMITTED".equals(c.getStatus())) c.setStatus("ASSIGNED");
     c.setUpdatedAt(Instant.now());
-    c.getAuditTrail().add("Assigned to "+assignedTo+" by "+u.getName());
+    c.getAuditTrail().add("Assigned to "+assignedTo.trim()+" by "+u.getName());
     return repo.save(c);
   }
 
@@ -101,8 +113,25 @@ public class ComplaintService {
     List<Complaint> all = forStaff(u);
     Map<String,Long> byCategory = new LinkedHashMap<>();
     all.forEach(c -> byCategory.merge(c.getCategory(),1L,Long::sum));
-    double avg = all.stream().filter(c -> c.getRating()!=null).mapToInt(Complaint::getRating).average().orElse(0);
-    return Map.of("total",all.size(),"averageResolutionHours",0,"averageRating",Math.round(avg*10.0)/10.0,"byCategory",byCategory);
+
+    double avgRating = all.stream()
+      .filter(c -> c.getRating()!=null)
+      .mapToInt(Complaint::getRating)
+      .average()
+      .orElse(0);
+
+    double avgResolutionHours = all.stream()
+      .filter(c -> c.getCreatedAt()!=null && c.getResolvedAt()!=null)
+      .mapToLong(c -> Duration.between(c.getCreatedAt(), c.getResolvedAt()).toMinutes())
+      .average()
+      .orElse(0) / 60.0;
+
+    return Map.of(
+      "total",all.size(),
+      "averageResolutionHours",Math.round(avgResolutionHours*10.0)/10.0,
+      "averageRating",Math.round(avgRating*10.0)/10.0,
+      "byCategory",byCategory
+    );
   }
 
   private long nextId() {
@@ -112,6 +141,7 @@ public class ComplaintService {
       FindAndModifyOptions.options().upsert(true).returnNew(true),
       Counter.class
     );
+    if(c == null) throw new IllegalStateException("Unable to generate complaint reference");
     return c.getSeq();
   }
 
