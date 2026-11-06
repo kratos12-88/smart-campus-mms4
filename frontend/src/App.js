@@ -81,7 +81,7 @@ function Home({summary}) {
 
 function Login({setUser}) {
   const [registerMode,setRegisterMode]=useState(false);
-  const [form,setForm]=useState({name:"",email:"",password:"",schoolName:"",campusName:""});
+  const [form,setForm]=useState({name:"",email:"",password:"",confirmPassword:"",schoolName:"",campusName:""});
   const [error,setError]=useState("");
   const [fieldErrors,setFieldErrors]=useState({});
   const [busy,setBusy]=useState(false);
@@ -112,6 +112,8 @@ function Login({setUser}) {
       else if(form.password.length>128) next.password="Password must be 128 characters or fewer.";
       else if(!/[A-Z]/.test(form.password)||!/[a-z]/.test(form.password)||!/\d/.test(form.password))
         next.password="Use uppercase, lowercase, and at least one number.";
+      if(!form.confirmPassword) next.confirmPassword="Please confirm your password.";
+      else if(form.confirmPassword!==form.password) next.confirmPassword="Passwords do not match.";
     }
 
     setFieldErrors(next);
@@ -148,7 +150,7 @@ function Login({setUser}) {
     setError("");
     setFieldErrors({});
     setShowPassword(false);
-    setForm({name:"",email:form.email.trim(),password:"",schoolName:"",campusName:""});
+    setForm({name:"",email:form.email.trim(),password:"",confirmPassword:"",schoolName:"",campusName:""});
   };
 
   return <Page eyebrow="Account access" title={registerMode?"Create student account":"Sign in"}>
@@ -179,6 +181,10 @@ function Login({setUser}) {
         {registerMode&&<small className="field-help">8–128 characters with uppercase, lowercase, and a number.</small>}
         {fieldErrors.password&&<small className="field-error">{fieldErrors.password}</small>}
       </Field>
+      {registerMode&&<Field label="Confirm password">
+        <input type={showPassword?"text":"password"} autoComplete="new-password" maxLength="128" aria-invalid={!!fieldErrors.confirmPassword} value={form.confirmPassword} onChange={e=>update("confirmPassword",e.target.value)}/>
+        {fieldErrors.confirmPassword&&<small className="field-error">{fieldErrors.confirmPassword}</small>}
+      </Field>}
       {error&&<div className="error" role="alert">{error}</div>}
       <button className="btn primary wide" disabled={busy}>{busy?"Please wait…":registerMode?"Create account":"Sign in"}</button>
       <button type="button" className="text-btn" onClick={switchMode} disabled={busy}>{registerMode?"Already registered? Sign in":"New student? Create an account"}</button>
