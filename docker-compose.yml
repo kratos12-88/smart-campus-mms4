@@ -13,6 +13,11 @@ services:
     environment:
       MONGODB_URI: mongodb://mongo:27017/smart_campus
       FRONTEND_ORIGIN: http://localhost:8080
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Campus Administrator}
+      ADMIN_SCHOOL: ${ADMIN_SCHOOL:-}
+      ADMIN_CAMPUS: ${ADMIN_CAMPUS:-}
     ports:
       - "8080:8080"
     depends_on:
