@@ -46,6 +46,7 @@ class AuthServiceTest {
       "name", "Test Student",
       "email", " Student@Example.com ",
       "password", "Password123",
+      "confirmPassword", "Password123",
       "schoolName", " Example University ",
       "campusName", " Main Campus "
     );
@@ -65,6 +66,7 @@ class AuthServiceTest {
       "name", "Test Student",
       "email", "not-an-email",
       "password", "Password123",
+      "confirmPassword", "Password123",
       "schoolName", "Example University",
       "campusName", "Main Campus"
     )));
@@ -77,6 +79,7 @@ class AuthServiceTest {
       "name", "Test Student",
       "email", "student@example.com",
       "password", "password",
+      "confirmPassword", "password",
       "schoolName", "Example University",
       "campusName", "Main Campus"
     )));
@@ -89,9 +92,23 @@ class AuthServiceTest {
       "name", "Test Student",
       "email", "student@example.com",
       "password", "Password123",
+      "confirmPassword", "Password123",
       "schoolName", "",
       "campusName", ""
     )));
+  }
+
+  @Test
+  void registerRejectsPasswordMismatch() {
+    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.register(Map.of(
+      "name", "Test Student",
+      "email", "student@example.com",
+      "password", "Password123",
+      "confirmPassword", "Password124",
+      "schoolName", "Example University",
+      "campusName", "Main Campus"
+    )));
+    assertTrue(ex.getMessage().toLowerCase().contains("do not match"));
   }
 
   @Test
@@ -104,6 +121,7 @@ class AuthServiceTest {
       "name", "Test Student",
       "email", "student@example.com",
       "password", "Password123",
+      "confirmPassword", "Password123",
       "schoolName", "Example University",
       "campusName", "Main Campus"
     )));
